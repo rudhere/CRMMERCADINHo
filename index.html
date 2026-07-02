@@ -1220,6 +1220,57 @@
     .action-btn.success { color: var(--success); }
     .action-btn.success:hover { background: rgba(0,119,73,.1); }
 
+    /* ===== CLIENT DEBT BAR ===== */
+    .debt-bar-wrap {
+      display: flex; flex-direction: column; gap: 6px;
+      margin: 0 0 16px;
+    }
+    .debt-bar-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--card);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .debt-bar-item:hover { border-color: var(--primary); transform: translateX(2px); }
+    .debt-bar-item.active { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0,119,73,.2); }
+    .debt-bar-fill {
+      position: absolute; inset: 0;
+      opacity: .08;
+      border-radius: var(--radius-sm);
+      transition: width .6s ease;
+    }
+    .debt-bar-fill.green { background: var(--success); }
+    .debt-bar-fill.gold { background: var(--gold); }
+    .debt-bar-fill.red { background: var(--danger); }
+    .debt-bar-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem; font-weight: 700; color: #fff;
+      flex-shrink: 0; position: relative; z-index: 1;
+    }
+    .debt-bar-info { flex: 1; min-width: 0; position: relative; z-index: 1; }
+    .debt-bar-name { font-size: .82rem; font-weight: 600; }
+    .debt-bar-sub { font-size: .68rem; color: var(--text-sec); }
+    .debt-bar-value { font-weight: 700; font-size: .85rem; white-space: nowrap; position: relative; z-index: 1; }
+    .debt-bar-badge {
+      font-size: .6rem; padding: 2px 6px; border-radius: 10px;
+      font-weight: 600; position: relative; z-index: 1;
+    }
+    .debt-bar-badge.pago { background: rgba(0,119,73,.12); color: var(--success); }
+    .debt-bar-badge.inadimplente { background: rgba(220,38,38,.12); color: var(--danger); }
+    .debt-bar-badge.negociando { background: rgba(245,158,11,.12); color: var(--gold); }
+    .debt-bar-clear {
+      font-size: .75rem; color: var(--text-sec); cursor: pointer;
+      padding: 4px 8px; border-radius: 4px; transition: background .2s;
+      align-self: flex-end;
+    }
+    .debt-bar-clear:hover { background: var(--border); }
+
     /* ===== LOGIN SCREEN ===== */
     .login-screen {
       position: fixed; inset: 0; z-index: 9999;
@@ -1429,12 +1480,13 @@
     <div class="cards-grid" id="dividasCards"></div>
     <div class="table-card">
       <div class="table-header">
-        <h3><i class="fas fa-exclamation-triangle text-danger"></i> Dívidas em Aberto</h3>
+        <h3><i class="fas fa-chart-bar text-green"></i> Financeiro · Dívidas</h3>
         <div class="table-actions">
           <button onclick="abrirCadastroDivida()" class="primary"><i class="fas fa-plus"></i> Nova Dívida</button>
           <button class="gold" onclick="gerarPDFDividas()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
       </div>
+      <div id="dividaBar"></div>
       <div style="overflow-x:auto;">
         <table>
           <thead><tr>
@@ -1455,7 +1507,7 @@
     <div class="cards-grid" id="produtosCards"></div>
     <div class="table-card">
       <div class="table-header">
-        <h3><i class="fas fa-box text-gold"></i> Produtos Retirados</h3>
+        <h3><i class="fas fa-box text-gold"></i> Produtos por Cliente</h3>
         <div class="table-actions">
           <button class="primary" onclick="abrirCadastroProduto()"><i class="fas fa-plus"></i> Registrar Produto</button>
         </div>
@@ -1911,7 +1963,7 @@ function logout() {
 }
 
 // ===================== STATE =====================
-let state = { searchQuery: '', filtroClientes: 'todos', charts: {} };
+let state = { searchQuery: '', filtroClientes: 'todos', filtroDividaCliente: null, charts: {} };
 
 // ===================== TOAST =====================
 function toast(msg, tipo='success') {
@@ -2148,15 +2200,34 @@ function verCliente(id) {
     ${c.obs ? `<div class="form-group"><label>Observações</label><p style="font-size:.85rem;color:var(--text-secondary);">${c.obs}</p></div>` : ''}
     ${(() => {
       const dividas = DB.dividas.list().filter(d => d.clienteId === c.id);
-      if (dividas.length === 0) return '';
-      const rows = dividas.map(d => `<tr style="${d.status==='pago'?'opacity:.5':''}">
-        <td>R$ ${(d.valor||0).toFixed(2)}</td>
-        <td>${d.vencimento||'---'}</td>
-        <td><span class="status-badge ${d.status}">${d.status}</span></td>
-      </tr>`).join('');
-      return `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
-        <h4 style="font-size:.85rem;margin-bottom:8px;">Dívidas (${dividas.length})</h4>
-        <table style="width:100%;font-size:.8rem;border-collapse:collapse;"><thead><tr><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+      let html = '';
+      if (dividas.length > 0) {
+        const rows = dividas.map(d => `<tr style="${d.status==='pago'?'opacity:.5':''}">
+          <td>R$ ${(d.valor||0).toFixed(2)}</td>
+          <td>${d.vencimento||'---'}</td>
+          <td><span class="status-badge ${d.status}">${d.status}</span></td>
+        </tr>`).join('');
+        html += `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+          <h4 style="font-size:.85rem;margin-bottom:8px;">Dívidas (${dividas.length})</h4>
+          <table style="width:100%;font-size:.8rem;border-collapse:collapse;"><thead><tr><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+      }
+      const produtos = DB.produtos.list().filter(p => p.clienteId === c.id || p.cliente === c.nome);
+      if (produtos.length > 0) {
+        const prodRows = produtos.map(p => `<tr>
+          <td>${p.nome}</td><td>${p.qtd||0}x</td><td>R$ ${(p.total||0).toFixed(2)}</td>
+        </tr>`).join('');
+        html += `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+          <h4 style="font-size:.85rem;margin-bottom:8px;">Produtos (${produtos.length})</h4>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button class="primary" style="padding:6px 14px;border:none;border-radius:6px;background:var(--primary);color:#fff;cursor:pointer;font-size:.78rem;font-family:inherit;" onclick="closeModal();abrirCadastroProduto(null,'${c.id}')"><i class="fas fa-plus"></i> Add Produto</button>
+          </div>
+          <table style="width:100%;font-size:.8rem;border-collapse:collapse;"><thead><tr><th>Produto</th><th>Qtd</th><th>Total</th></tr></thead><tbody>${prodRows}</tbody></table>`;
+      } else {
+        html += `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+          <p style="font-size:.8rem;color:var(--text-sec);">Nenhum produto vinculado.
+          <button style="padding:4px 12px;margin-left:8px;border:1px solid var(--primary);border-radius:6px;background:none;color:var(--primary);cursor:pointer;font-size:.78rem;font-family:inherit;" onclick="closeModal();abrirCadastroProduto(null,'${c.id}')">Adicionar Produto</button></p>`;
+      }
+      return html;
     })()}
   `;
   const footer = `
@@ -2261,10 +2332,10 @@ function marcarPago(id) {
 }
 
 // ===================== PRODUTOS CRUD =====================
-function abrirCadastroProduto(produto) {
+function abrirCadastroProduto(produto, clienteIdPrefill) {
   const p = produto || {};
   const clientes = DB.clientes.list();
-  const opts = clientes.map(c => `<option value="${c.nome}" ${p.cliente===c.nome?'selected':''}>${c.nome}</option>`).join('');
+  const opts = clientes.map(c => `<option value="${c.id}" ${(p.clienteId||clienteIdPrefill)===c.id?'selected':''}>${c.nome} ${c.cpf?'- '+c.cpf:''}</option>`).join('');
   const title = p.id ? 'Editar Produto' : 'Registrar Produto';
   const body = `
     <div class="form-row">
@@ -2276,7 +2347,7 @@ function abrirCadastroProduto(produto) {
       <div class="form-group"><label>Total (R$)</label><input id="pTotal" type="number" step="0.01" value="${p.total||''}" placeholder="Calculado auto" readonly style="background:var(--bg);"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Cliente</label><select id="pCliente"><option value="">Sem cliente</option>${opts}</select></div>
+      <div class="form-group"><label>Cliente *</label><select id="pCliente"><option value="">Selecione...</option>${opts}</select></div>
       <div class="form-group"><label>Data</label><input id="pData" type="date" value="${p.data||DB.hojeLocal()}"></div>
     </div>
   `;
@@ -2302,10 +2373,11 @@ function salvarProduto(id) {
   const qtd = parseInt(document.getElementById('pQtd').value) || 1;
   const valor = parseFloat(document.getElementById('pValor').value) || 0;
   const total = parseFloat(document.getElementById('pTotal').value) || (qtd * valor);
-  const cliente = document.getElementById('pCliente').value;
+  const clienteId = document.getElementById('pCliente').value;
   const data = document.getElementById('pData').value;
   if (!nome) { toast('Nome do produto é obrigatório!', 'error'); return; }
-  const p = { nome, qtd, valor, total, cliente, data };
+  if (!clienteId) { toast('Selecione um cliente!', 'error'); return; }
+  const p = { nome, qtd, valor, total, clienteId, data };
   const list = DB.produtos.list();
   if (id) { const idx = list.findIndex(x => x.id === id); if(idx>=0) { p.id=id; list[idx]=p; } else { p.id=DB._genId(); list.push(p); } }
   else { p.id = DB._genId(); list.push(p); }
@@ -2459,6 +2531,7 @@ function renderClientes() {
       <td><span class="status-badge ${c.status}">${statusLabel[c.status]||c.status}</span></td>
       <td>
         <button class="action-btn" onclick="verCliente('${c.id}')" title="Ver"><i class="fas fa-eye"></i></button>
+        <button class="action-btn" onclick="abrirCadastroProduto(null,'${c.id}')" title="Add Produto"><i class="fas fa-box"></i></button>
         <button class="action-btn" onclick="abrirCadastroCliente(DB.clientes.get('${c.id}'))" title="Editar"><i class="fas fa-edit"></i></button>
         <button class="action-btn danger" onclick="excluirCliente('${c.id}')" title="Excluir"><i class="fas fa-trash"></i></button>
       </td>
@@ -2468,6 +2541,7 @@ function renderClientes() {
 
 function renderDividas() {
   const dividas = DB.dividas.list();
+  const clientes = DB.clientes.list();
   const stats = DB.getStats();
   const total = dividas.reduce((a,d) => a+(d.valor||0), 0);
   const pago = dividas.filter(d=>d.status==='pago').reduce((a,d)=>a+(d.pago||0), 0);
@@ -2485,12 +2559,61 @@ function renderDividas() {
       <div class="card-value">${inadimplentes}</div></div>
   `;
 
+  // ── Barra de dados: clientes × dívidas ──
+  const maxDebt = Math.max(...clientes.map(c => {
+    const d = dividas.filter(x => x.clienteId === c.id);
+    return d.reduce((a,x) => a + (x.valor||0) - (x.pago||0), 0);
+  }), 1);
+
+  const barHtml = clientes
+    .sort((a,b) => {
+      const da = dividas.filter(x=>x.clienteId===a.id).reduce((s,x)=>s+(x.valor||0)-(x.pago||0),0);
+      const db = dividas.filter(x=>x.clienteId===b.id).reduce((s,x)=>s+(x.valor||0)-(x.pago||0),0);
+      return db - da;
+    })
+    .map(c => {
+      const d = dividas.filter(x => x.clienteId === c.id);
+      const pend = d.reduce((s,x) => s + (x.valor||0) - (x.pago||0), 0);
+      const pct = maxDebt > 0 ? (pend / maxDebt) * 100 : 0;
+      const cor = c.cor || '#0d7a3e';
+      const saldoLabel = pend > 0 ? `R$ ${pend.toFixed(2)}` : 'Pago';
+      const fillClass = pend === 0 ? 'green' : (c.status === 'negociando' ? 'gold' : 'red');
+      const isActive = state.filtroDividaCliente === c.id;
+      return `<div class="debt-bar-item ${isActive?'active':''}" onclick="filtrarDividaPorCliente('${c.id}')">
+        <div class="debt-bar-fill ${fillClass}" style="width:${pct}%"></div>
+        <div class="debt-bar-avatar" style="background:${cor}">${c.avatar||c.nome[0]}</div>
+        <div class="debt-bar-info">
+          <div class="debt-bar-name">${c.nome}</div>
+          <div class="debt-bar-sub">${d.length} dívida${d.length!==1?'s':''} · ${c.produtos||'---'}</div>
+        </div>
+        <div class="debt-bar-value" style="color:${pend===0?'var(--success)':'var(--danger)'}">${saldoLabel}</div>
+        <span class="debt-bar-badge ${c.status}">${c.status}</span>
+      </div>`;
+    }).join('');
+
+  const clearBtn = state.filtroDividaCliente
+    ? `<div class="debt-bar-clear" onclick="state.filtroDividaCliente=null;renderDividas()"><i class="fas fa-times"></i> Limpar filtro</div>`
+    : '';
+
+  document.getElementById('dividaBar').innerHTML = barHtml
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h4 style="font-size:.85rem;margin:0;"><i class="fas fa-chart-bar"></i> Clientes · Saldo Devedor</h4>
+        ${clearBtn}
+      </div>
+      <div class="debt-bar-wrap">${barHtml}</div>`
+    : '<p style="font-size:.85rem;color:var(--text-sec);margin:12px 0;">Nenhum cliente cadastrado.</p>';
+
+  // ── Tabela de dívidas (filtrada) ──
+  const filtradas = state.filtroDividaCliente
+    ? dividas.filter(d => d.clienteId === state.filtroDividaCliente)
+    : dividas;
+
   const tbody = document.getElementById('dividasTbody');
   const empty = document.getElementById('dividasEmpty');
-  if (dividas.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (filtradas.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
 
-  tbody.innerHTML = dividas.map(d => {
+  tbody.innerHTML = filtradas.map(d => {
     const c = DB.clientes.get(d.clienteId);
     const nome = c ? c.nome : 'Cliente removido';
     const atraso = d.vencimento ? Math.max(0, Math.floor((new Date() - new Date(d.vencimento+'T12:00:00')) / (1000*60*60*24))) : 0;
@@ -2518,6 +2641,11 @@ function renderDividas() {
   }).join('');
 }
 
+function filtrarDividaPorCliente(clienteId) {
+  state.filtroDividaCliente = state.filtroDividaCliente === clienteId ? null : clienteId;
+  renderDividas();
+}
+
 function renderProdutos() {
   const list = DB.produtos.list();
   const total = list.reduce((a,p) => a+(p.total||0), 0);
@@ -2540,18 +2668,22 @@ function renderProdutos() {
   const empty = document.getElementById('produtosEmpty');
   if (list.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  tbody.innerHTML = list.map(p => `<tr>
-    <td class="fw-700">${p.nome}</td>
-    <td>${p.qtd||0} un</td>
-    <td>R$ ${(p.valor||0).toFixed(2)}</td>
-    <td class="fw-700">R$ ${(p.total||0).toFixed(2)}</td>
-    <td>${p.cliente||'---'}</td>
-    <td>${p.data||'---'}</td>
-    <td>
-      <button class="action-btn" onclick="abrirCadastroProduto((DB._get('produtos')||[]).find(x=>x.id==='${p.id}'))" title="Editar"><i class="fas fa-edit"></i></button>
-      <button class="action-btn danger" onclick="excluirProduto('${p.id}')" title="Excluir"><i class="fas fa-trash"></i></button>
-    </td>
-  </tr>`).join('');
+  tbody.innerHTML = list.map(p => {
+    const c = p.clienteId ? DB.clientes.get(p.clienteId) : null;
+    const nomeCli = c ? c.nome : (p.cliente || '---');
+    return `<tr>
+      <td class="fw-700">${p.nome}</td>
+      <td>${p.qtd||0} un</td>
+      <td>R$ ${(p.valor||0).toFixed(2)}</td>
+      <td class="fw-700">R$ ${(p.total||0).toFixed(2)}</td>
+      <td>${nomeCli}</td>
+      <td>${p.data||'---'}</td>
+      <td>
+        <button class="action-btn" onclick="abrirCadastroProduto((DB._get('produtos')||[]).find(x=>x.id==='${p.id}'))" title="Editar"><i class="fas fa-edit"></i></button>
+        <button class="action-btn danger" onclick="excluirProduto('${p.id}')" title="Excluir"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function renderRelatorio() {
