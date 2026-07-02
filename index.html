@@ -1562,6 +1562,12 @@ const DB = {
   _set(key, val) { localStorage.setItem(this._prefix+key, JSON.stringify(val)); this.atualizarStorageInfo(); },
   _genId() { return Date.now().toString(36) + Math.random().toString(36).substr(2,5) },
 
+  /** Data de hoje YYYY-MM-DD no fuso local do computador */
+  hojeLocal() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  },
+
   clientes: {
     list() { return DB._get('clientes') || [] },
     save(cliente) {
@@ -1592,7 +1598,7 @@ const DB = {
     save(p) {
       const list = this.list();
       if (p.id) { const idx = list.findIndex(x => x.id===p.id); if(idx>=0) list[idx]=p; else list.push(p); }
-      else { p.id = DB._genId(); p.data = p.data || new Date().toISOString().split('T')[0]; list.push(p); }
+      else { p.id = DB._genId(); p.data = p.data || DB.hojeLocal(); list.push(p); }
       DB._set('produtos', list);
       return p;
     },
@@ -1616,15 +1622,15 @@ const DB = {
     get(id) { return this.list().find(l => l.id === id) },
     delete(id) { DB._set('lembretes', this.list().filter(l => l.id !== id)) },
     hoje() {
-      const hoje = new Date().toISOString().split('T')[0];
-      return this.list().filter(l => l.data === hoje && l.status !== 'concluido');
+      const h = DB.hojeLocal();
+      return this.list().filter(l => l.data === h && l.status !== 'concluido');
     },
     proximos(dias=7) {
       const hoje = new Date();
       const fim = new Date(hoje);
       fim.setDate(fim.getDate() + dias);
-      const h = hoje.toISOString().split('T')[0];
-      const f = fim.toISOString().split('T')[0];
+      const h = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-' + String(hoje.getDate()).padStart(2,'0');
+      const f = fim.getFullYear() + '-' + String(fim.getMonth()+1).padStart(2,'0') + '-' + String(fim.getDate()).padStart(2,'0');
       return this.list().filter(l => l.data >= h && l.data <= f && l.status !== 'concluido');
     },
     doMes(mes, ano) {
@@ -2012,7 +2018,7 @@ function abrirCadastroProduto(produto) {
     </div>
     <div class="form-row">
       <div class="form-group"><label>Cliente</label><select id="pCliente"><option value="">Sem cliente</option>${opts}</select></div>
-      <div class="form-group"><label>Data</label><input id="pData" type="date" value="${p.data||new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>Data</label><input id="pData" type="date" value="${p.data||DB.hojeLocal()}"></div>
     </div>
   `;
   const footer = `
@@ -2374,7 +2380,7 @@ function renderCalTable() {
   const ultimoDia = new Date(ano, mes + 1, 0);
   const inicioSemana = primeiroDia.getDay();
   const totalDias = ultimoDia.getDate();
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = DB.hojeLocal();
   const hojeDt = new Date().getDate();
   const hojeMes = new Date().getMonth();
   const hojeAno = new Date().getFullYear();
@@ -2472,7 +2478,7 @@ function renderCalLembretes() {
   list.sort((a,b) => a.data.localeCompare(b.data));
 
   tbody.innerHTML = list.map(l => {
-    const isOverdue = l.data < new Date().toISOString().split('T')[0] && l.status !== 'concluido';
+    const isOverdue = l.data < DB.hojeLocal() && l.status !== 'concluido';
     return `<tr>
       <td style="font-weight:${isOverdue?'700':'400'};color:${isOverdue?'var(--danger)':'inherit'}">${new Date(l.data+'T12:00:00').toLocaleDateString('pt-BR')} ${isOverdue?'<span style="font-size:.65rem;color:var(--danger);">(atrasado)</span>':''}</td>
       <td>${l.clienteNome||'---'}</td>
@@ -2493,7 +2499,7 @@ function abrirCadastroLembrete(dataStr, id) {
   const l = id ? DB.lembretes.get(id) : {};
   const clientes = DB.clientes.list();
   const opts = clientes.map(c => `<option value="${c.id}" ${l.clienteId===c.id?'selected':''}>${c.nome} ${c.cpf?'- '+c.cpf:''}</option>`).join('');
-  const dftData = dataStr || l.data || new Date().toISOString().split('T')[0];
+  const dftData = dataStr || l.data || DB.hojeLocal();
 
   const title = id ? 'Editar Lembrete' : 'Novo Lembrete';
   const body = `
@@ -2909,7 +2915,7 @@ function exportarDados() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `backup_smf_${new Date().toISOString().split('T')[0]}.json`;
+  a.href = url; a.download = `backup_smf_${DB.hojeLocal()}.json`;
   a.click();
   URL.revokeObjectURL(url);
   toast('Backup exportado!');
@@ -2955,7 +2961,7 @@ function exportarClientesCSV() {
   const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `clientes_smf_${new Date().toISOString().split('T')[0]}.csv`;
+  a.href = url; a.download = `clientes_smf_${DB.hojeLocal()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   toast('CSV exportado!');
