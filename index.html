@@ -1515,7 +1515,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead><tr>
-            <th>Produto</th><th>Qtd</th><th>Valor Unit.</th><th>Total</th><th>Cliente</th><th>Data</th><th>Ações</th>
+            <th>Produto</th><th>Cód. Barras</th><th>Qtd</th><th>Valor Unit.</th><th>Total</th><th>Cliente</th><th>Data</th><th>Ações</th>
           </tr></thead>
           <tbody id="produtosTbody"></tbody>
         </table>
@@ -2213,15 +2213,19 @@ function verCliente(id) {
       }
       const produtos = DB.produtos.list().filter(p => p.clienteId === c.id || p.cliente === c.nome);
       if (produtos.length > 0) {
+        const totalProd = produtos.reduce((s,p) => s + (p.total || 0), 0);
         const prodRows = produtos.map(p => `<tr>
-          <td>${p.nome}</td><td>${p.qtd||0}x</td><td>R$ ${(p.total||0).toFixed(2)}</td>
+          <td>${p.nome}</td><td style="font-size:.65rem;font-family:monospace;">${p.codigoBarras||'---'}</td><td>${p.qtd||0}x</td><td>R$ ${(p.valor||0).toFixed(2)}</td><td>R$ ${(p.total||0).toFixed(2)}</td>
         </tr>`).join('');
         html += `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
-          <h4 style="font-size:.85rem;margin-bottom:8px;">Produtos (${produtos.length})</h4>
-          <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h4 style="font-size:.85rem;margin:0;">Produtos (${produtos.length})</h4>
+            <span style="font-size:.82rem;font-weight:700;color:var(--danger);">Total: R$ ${totalProd.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
             <button class="primary" style="padding:6px 14px;border:none;border-radius:6px;background:var(--primary);color:#fff;cursor:pointer;font-size:.78rem;font-family:inherit;" onclick="closeModal();abrirCadastroProduto(null,'${c.id}')"><i class="fas fa-plus"></i> Add Produto</button>
           </div>
-          <table style="width:100%;font-size:.8rem;border-collapse:collapse;"><thead><tr><th>Produto</th><th>Qtd</th><th>Total</th></tr></thead><tbody>${prodRows}</tbody></table>`;
+          <table style="width:100%;font-size:.78rem;border-collapse:collapse;"><thead><tr><th>Produto</th><th>Cód. Barras</th><th>Qtd</th><th>Valor Unit.</th><th>Total</th></tr></thead><tbody>${prodRows}</tbody></table>`;
       } else {
         html += `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
           <p style="font-size:.8rem;color:var(--text-sec);">Nenhum produto vinculado.
@@ -2340,23 +2344,24 @@ function abrirCadastroProduto(produto, clienteIdPrefill) {
   const body = `
     <div class="form-row">
       <div class="form-group"><label>Produto *</label><input id="pNome" value="${p.nome||''}" placeholder="Nome do produto"></div>
+      <div class="form-group"><label>Cód. Barras</label><input id="pCodBarras" value="${p.codigoBarras||''}" placeholder="Código de barras"></div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label>Quantidade</label><input id="pQtd" type="number" value="${p.qtd||'1'}" min="1"></div>
+      <div class="form-group"><label>Valor Unit. (R$) *</label><input id="pValor" type="number" step="0.01" value="${p.valor||''}" placeholder="0,00"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Valor Unit. (R$)</label><input id="pValor" type="number" step="0.01" value="${p.valor||''}" placeholder="0,00"></div>
-      <div class="form-group"><label>Total (R$)</label><input id="pTotal" type="number" step="0.01" value="${p.total||''}" placeholder="Calculado auto" readonly style="background:var(--bg);"></div>
-    </div>
-    <div class="form-row">
+      <div class="form-group"><label>Total (R$)</label><input id="pTotal" type="number" step="0.01" value="${p.total||''}" placeholder="Auto" readonly style="background:var(--bg);"></div>
       <div class="form-group"><label>Cliente *</label><select id="pCliente"><option value="">Selecione...</option>${opts}</select></div>
-      <div class="form-group"><label>Data</label><input id="pData" type="date" value="${p.data||DB.hojeLocal()}"></div>
     </div>
+    <div class="form-group"><label>Data</label><input id="pData" type="date" value="${p.data||DB.hojeLocal()}"></div>
+    <p style="font-size:.75rem;color:var(--text-sec);"><i class="fas fa-info-circle"></i> O valor total será somado automaticamente à dívida do cliente.</p>
   `;
   const footer = `
     <button onclick="closeModal()">Cancelar</button>
     <button class="primary" onclick="salvarProduto('${p.id||''}')">${p.id?'Salvar':'Registrar'}</button>
   `;
   openModal(title, body, footer);
-  // Auto-calc total
   setTimeout(() => {
     ['pQtd','pValor'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', () => {
@@ -2368,30 +2373,77 @@ function abrirCadastroProduto(produto, clienteIdPrefill) {
   }, 50);
 }
 
+function recalcularDividaPorProdutos(clienteId) {
+  if (!clienteId) return;
+  const produtos = DB.produtos.list().filter(p => p.clienteId === clienteId);
+  const total = produtos.reduce((s, p) => s + (p.total || p.qtd * p.valor || 0), 0);
+  let dividas = DB.dividas.list();
+  let existente = dividas.find(d => d.clienteId === clienteId && d._autoGerada);
+
+  if (total <= 0) {
+    if (existente) DB.dividas.delete(existente.id);
+    DB.clientes.recalc(clienteId);
+    renderAll();
+    return;
+  }
+
+  const nomes = produtos.map(p => p.nome).join(', ');
+  if (existente) {
+    existente.valor = total;
+    existente.produtos = nomes;
+    if (existente.pago > total) { existente.pago = total; existente.status = 'pago'; }
+    DB.dividas.save(existente);
+  } else {
+    const nova = {
+      clienteId,
+      valor: total,
+      pago: 0,
+      vencimento: '',
+      dataPag: '',
+      status: 'inadimplente',
+      produtos: nomes,
+      obs: 'Gerado automaticamente dos produtos',
+      _autoGerada: true
+    };
+    nova.id = DB._genId();
+    nova.criadoEm = new Date().toISOString();
+    const list = DB.dividas.list();
+    list.push(nova);
+    DB._set('dividas', list);
+    DB.clientes._calc();
+  }
+  DB.clientes.recalc(clienteId);
+}
+
 function salvarProduto(id) {
   const nome = document.getElementById('pNome').value.trim();
+  const codigoBarras = document.getElementById('pCodBarras').value.trim();
   const qtd = parseInt(document.getElementById('pQtd').value) || 1;
   const valor = parseFloat(document.getElementById('pValor').value) || 0;
   const total = parseFloat(document.getElementById('pTotal').value) || (qtd * valor);
   const clienteId = document.getElementById('pCliente').value;
   const data = document.getElementById('pData').value;
   if (!nome) { toast('Nome do produto é obrigatório!', 'error'); return; }
+  if (valor <= 0) { toast('Informe o valor unitário!', 'error'); return; }
   if (!clienteId) { toast('Selecione um cliente!', 'error'); return; }
-  const p = { nome, qtd, valor, total, clienteId, data };
+  const p = { nome, codigoBarras, qtd, valor, total, clienteId, data };
   const list = DB.produtos.list();
   if (id) { const idx = list.findIndex(x => x.id === id); if(idx>=0) { p.id=id; list[idx]=p; } else { p.id=DB._genId(); list.push(p); } }
   else { p.id = DB._genId(); list.push(p); }
   DB._set('produtos', list);
   closeModal();
   toast('Produto registrado!');
-  renderAll();
+  recalcularDividaPorProdutos(clienteId);
+  if (!id) renderAll(); else renderAll();
 }
 
 function excluirProduto(id) {
-  if (!confirm('Excluir este registro?')) return;
+  const p = DB.produtos.list().find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Excluir "${p.nome}"?`)) return;
   DB.produtos.delete(id);
   toast('Produto removido.', 'warning');
-  renderAll();
+  recalcularDividaPorProdutos(p.clienteId);
 }
 
 // ===================== RENDER =====================
@@ -2671,8 +2723,10 @@ function renderProdutos() {
   tbody.innerHTML = list.map(p => {
     const c = p.clienteId ? DB.clientes.get(p.clienteId) : null;
     const nomeCli = c ? c.nome : (p.cliente || '---');
+    const codB = p.codigoBarras || '---';
     return `<tr>
       <td class="fw-700">${p.nome}</td>
+      <td style="font-size:.7rem;font-family:monospace;">${codB}</td>
       <td>${p.qtd||0} un</td>
       <td>R$ ${(p.valor||0).toFixed(2)}</td>
       <td class="fw-700">R$ ${(p.total||0).toFixed(2)}</td>
