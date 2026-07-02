@@ -1215,6 +1215,77 @@
     .text-warning { color: var(--warning); }
     .fw-700 { font-weight: 700; }
     .mb-16 { margin-bottom: 16px; }
+    .row-pago { opacity: .6; }
+    .row-pago td { text-decoration: line-through; }
+    .action-btn.success { color: var(--success); }
+    .action-btn.success:hover { background: rgba(0,119,73,.1); }
+
+    /* ===== LOGIN SCREEN ===== */
+    .login-screen {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+      transition: opacity .5s ease, visibility .5s ease;
+    }
+    .login-screen.hidden {
+      opacity: 0; visibility: hidden; pointer-events: none;
+    }
+    .login-box {
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      padding: 40px 36px; width: 100%; max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.12);
+      text-align: center;
+      animation: loginIn .4s ease;
+    }
+    @keyframes loginIn {
+      from { opacity: 0; transform: translateY(20px) scale(.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .login-logo {
+      font-size: 3rem; margin-bottom: 10px;
+    }
+    .login-box h2 {
+      margin: 0 0 2px; font-size: 1.35rem; color: var(--text);
+    }
+    .login-subtitle {
+      margin: 0 0 24px; color: var(--text-sec); font-size: .82rem;
+    }
+    .login-box input[type="password"] {
+      width: 100%; padding: 12px 14px; margin-bottom: 12px;
+      border: 2px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 1rem; text-align: center; letter-spacing: 2px;
+      transition: border-color .2s; box-sizing: border-box;
+      outline: none;
+    }
+    .login-box input[type="password"]:focus {
+      border-color: var(--primary);
+    }
+    .login-box .btn-login {
+      width: 100%; padding: 12px;
+      background: var(--primary); color: #fff;
+      border: none; border-radius: var(--radius-sm);
+      font-size: 1rem; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: opacity .2s;
+    }
+    .login-box .btn-login:hover { opacity: .85; }
+    .login-box .btn-login:active { transform: scale(.97); }
+    .login-error {
+      color: var(--danger); font-size: .82rem; margin-top: 8px; display: none;
+    }
+    .login-info {
+      color: var(--text-sec); font-size: .75rem; margin-top: 16px;
+    }
+    .login-switch {
+      background: none; border: none; color: var(--primary);
+      cursor: pointer; font-size: .78rem; margin-top: 10px;
+      text-decoration: underline; font-family: inherit;
+      padding: 4px 8px; border-radius: 4px; transition: background .2s;
+    }
+    .login-switch:hover { background: rgba(0,119,73,.08); }
   </style>
 </head>
 <body>
@@ -1546,6 +1617,12 @@
         </div>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="processarImport(event)">
         <hr style="margin:24px 0;border:none;border-top:1px solid var(--border);">
+        <h4 style="font-size:.9rem;margin-bottom:12px;">Segurança</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-family:inherit;" onclick="alterarSenha()"><i class="fas fa-key"></i> Alterar Senha</button>
+          <button style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-family:inherit;" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sair</button>
+        </div>
+        <hr style="margin:24px 0;border:none;border-top:1px solid var(--border);">
         <p style="font-size:.75rem;color:var(--text-secondary);">
           <i class="fas fa-info-circle"></i> Todos os dados são armazenados localmente no navegador (localStorage). Nenhum dado é enviado para servidores externos.
         </p>
@@ -1554,6 +1631,26 @@
   </section>
 </main>
 
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">🏪</div>
+    <h2>Super Mercado Felix</h2>
+    <p class="login-subtitle">Sistema de Gerenciamento</p>
+    <div id="loginSetup">
+      <p style="margin-bottom:16px;color:var(--text-sec);font-size:.88rem;">Crie uma senha para proteger o sistema:</p>
+      <input type="password" id="loginNewPass" placeholder="Nova senha" autocomplete="new-password">
+      <input type="password" id="loginNewPass2" placeholder="Confirmar senha" autocomplete="new-password">
+      <button class="btn-login" onclick="setupPassword()">Definir Senha</button>
+      <p id="loginSetupError" class="login-error"></p>
+    </div>
+    <div id="loginForm" style="display:none">
+      <input type="password" id="loginPass" placeholder="Digite sua senha" autocomplete="current-password">
+      <button class="btn-login" onclick="doLogin()">Entrar</button>
+      <p id="loginError" class="login-error">Senha incorreta</p>
+      <button class="login-switch" onclick="toggleLoginMode()" id="loginSwitchBtn">Primeiro acesso? Criar senha</button>
+    </div>
+  </div>
+</div>
 <script>
 // ===================== DATABASE =====================
 const DB = {
@@ -1581,11 +1678,27 @@ const DB = {
     },
     get(id) { return this.list().find(c => c.id === id) },
     delete(id) { DB._set('clientes', this.list().filter(c => c.id !== id)); this._calc(); },
+    /** Recalcula saldo e status do cliente a partir das dívidas */
+    recalc(clienteId) {
+      const c = this.get(clienteId);
+      if (!c) return;
+      const dividas = DB.dividas.list().filter(d => d.clienteId === clienteId);
+      const totalDev = dividas.reduce((a,d) => a + (d.valor||0), 0);
+      const totalPago = dividas.reduce((a,d) => a + (d.pago||0), 0);
+      c.saldo = Math.max(0, totalDev - totalPago);
+      const temVencidas = dividas.some(d => d.vencimento && d.vencimento < DB.hojeLocal() && (d.pago||0) < (d.valor||0));
+      const todasPagas = dividas.length > 0 && dividas.every(d => (d.pago||0) >= (d.valor||0));
+      if (todasPagas) c.status = 'ativo';
+      else if (temVencidas || c.saldo > 0) c.status = 'inadimplente';
+      this.save(c);
+    },
     _calc() {
       const cs = this.list();
+  const dividas = DB.dividas.list();
       DB._set('_stats', {
         totalClientes: cs.length,
-        totalDividas: cs.reduce((a,c) => a + (c.saldo||0), 0),
+        totalDividas: dividas.reduce((a,d) => a + (d.valor||0), 0),
+        totalPago: dividas.reduce((a,d) => a + (d.pago||0), 0),
         inadimplentes: cs.filter(c => c.status === 'inadimplente').length,
         ativos: cs.filter(c => c.status === 'ativo').length,
         negociando: cs.filter(c => c.status === 'negociando').length,
@@ -1639,10 +1752,34 @@ const DB = {
     }
   },
 
+  dividas: {
+    list() { return DB._get('dividas') || [] },
+    save(d) {
+      const list = this.list();
+      if (d.id) {
+        const idx = list.findIndex(x => x.id===d.id);
+        if (idx>=0) list[idx] = d; else list.push(d);
+      } else {
+        d.id = DB._genId();
+        d.criadoEm = new Date().toISOString();
+        list.push(d);
+      }
+      DB._set('dividas', list);
+      DB.clientes._calc();
+      return d;
+    },
+    get(id) { return this.list().find(x => x.id === id) },
+    delete(id) {
+      const list = this.list().filter(x => x.id !== id);
+      DB._set('dividas', list);
+      DB.clientes._calc();
+    }
+  },
+
   getStats() {
     let s = DB._get('_stats');
     if (!s) { DB.clientes._calc(); s = DB._get('_stats'); }
-    return s || { totalClientes:0, totalDividas:0, inadimplentes:0, ativos:0, negociando:0 };
+    return s || { totalClientes:0, totalDividas:0, totalPago:0, inadimplentes:0, ativos:0, negociando:0 };
   },
 
   atualizarStorageInfo() {
@@ -1682,6 +1819,96 @@ const DB = {
     this.atualizarStorageInfo();
   }
 };
+
+// ===================== LOGIN =====================
+function checkLogin() {
+  if (sessionStorage.getItem('smf_logged')) {
+    document.getElementById('loginScreen').classList.add('hidden');
+    return true;
+  }
+  const loginData = DB._get('login');
+  if (loginData && loginData.hash) {
+    document.getElementById('loginSetup').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'block';
+  } else {
+    document.getElementById('loginSetup').style.display = 'block';
+    document.getElementById('loginForm').style.display = 'none';
+  }
+  document.getElementById('loginScreen').classList.remove('hidden');
+  return false;
+}
+
+function toggleLoginMode() {
+  const setup = document.getElementById('loginSetup');
+  const form = document.getElementById('loginForm');
+  const btn = document.getElementById('loginSwitchBtn');
+  if (setup.style.display === 'none') {
+    setup.style.display = 'block';
+    form.style.display = 'none';
+    btn.textContent = 'Já tem senha? Fazer login';
+  } else {
+    setup.style.display = 'none';
+    form.style.display = 'block';
+    btn.textContent = 'Primeiro acesso? Criar senha';
+  }
+  document.getElementById('loginSetupError').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+function setupPassword() {
+  const p1 = document.getElementById('loginNewPass').value;
+  const p2 = document.getElementById('loginNewPass2').value;
+  const err = document.getElementById('loginSetupError');
+  if (!p1 || p1.length < 3) {
+    err.textContent = 'A senha deve ter no mínimo 3 caracteres'; err.style.display = 'block'; return;
+  }
+  if (p1 !== p2) {
+    err.textContent = 'As senhas não conferem'; err.style.display = 'block'; return;
+  }
+  err.style.display = 'none';
+  DB._set('login', { hash: btoa(p1) });
+  sessionStorage.setItem('smf_logged', '1');
+  document.getElementById('loginScreen').classList.add('hidden');
+  posLogin();
+  toast('Senha definida com sucesso!', 'success');
+}
+
+function doLogin() {
+  const p = document.getElementById('loginPass').value;
+  const loginData = DB._get('login');
+  const err = document.getElementById('loginError');
+  if (loginData && loginData.hash && loginData.hash === btoa(p)) {
+    err.style.display = 'none';
+    sessionStorage.setItem('smf_logged', '1');
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('loginPass').value = '';
+    posLogin();
+  } else {
+    err.style.display = 'block';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+  }
+}
+
+function alterarSenha() {
+  const nova = prompt('Digite a nova senha (mínimo 3 caracteres):');
+  if (!nova || nova.length < 3) { toast('Senha inválida', 'error'); return; }
+  const conf = prompt('Confirme a nova senha:');
+  if (nova !== conf) { toast('Senhas não conferem', 'error'); return; }
+  DB._set('login', { hash: btoa(nova) });
+  toast('Senha alterada com sucesso!', 'success');
+}
+
+function logout() {
+  sessionStorage.removeItem('smf_logged');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('loginSetup').style.display = 'none';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  closeModal();
+  switchSection('dashboard');
+}
 
 // ===================== STATE =====================
 let state = { searchQuery: '', filtroClientes: 'todos', charts: {} };
@@ -1845,10 +2072,8 @@ function abrirCadastroCliente(cliente) {
     </div>
     <div class="form-row">
       <div class="form-group"><label>Telefone</label><input id="fTel" value="${c.telefone||''}" placeholder="(61) 9 9999-9999"></div>
-      <div class="form-group"><label>Saldo Devedor (R$)</label><input id="fSaldo" type="number" step="0.01" value="${c.saldo||'0'}" placeholder="0,00"></div>
-    </div>
-    <div class="form-row">
       <div class="form-group"><label>Produtos Retirados</label><input id="fProdutos" value="${c.produtos||''}" placeholder="Ex: Arroz, Feijão, Óleo"></div>
+    </div>
       <div class="form-group"><label>Período da Dívida</label><input id="fPeriodo" value="${c.periodo||''}" placeholder="Jan 2026 - Jun 2026"></div>
     </div>
     <div class="form-row">
@@ -1874,7 +2099,6 @@ function salvarCliente(id) {
     nome: document.getElementById('fNome').value.trim(),
     cpf: document.getElementById('fCpf').value.trim(),
     telefone: document.getElementById('fTel').value.trim(),
-    saldo: parseFloat(document.getElementById('fSaldo').value) || 0,
     produtos: document.getElementById('fProdutos').value.trim(),
     periodo: document.getElementById('fPeriodo').value.trim(),
     status: document.getElementById('fStatus').value,
@@ -1922,6 +2146,18 @@ function verCliente(id) {
       <div class="detail-item"><label>Vencimento</label><p>${c.vencimento||'---'}</p></div>
     </div>
     ${c.obs ? `<div class="form-group"><label>Observações</label><p style="font-size:.85rem;color:var(--text-secondary);">${c.obs}</p></div>` : ''}
+    ${(() => {
+      const dividas = DB.dividas.list().filter(d => d.clienteId === c.id);
+      if (dividas.length === 0) return '';
+      const rows = dividas.map(d => `<tr style="${d.status==='pago'?'opacity:.5':''}">
+        <td>R$ ${(d.valor||0).toFixed(2)}</td>
+        <td>${d.vencimento||'---'}</td>
+        <td><span class="status-badge ${d.status}">${d.status}</span></td>
+      </tr>`).join('');
+      return `<hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+        <h4 style="font-size:.85rem;margin-bottom:8px;">Dívidas (${dividas.length})</h4>
+        <table style="width:100%;font-size:.8rem;border-collapse:collapse;"><thead><tr><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
+    })()}
   `;
   const footer = `
     <button onclick="closeModal()">Fechar</button>
@@ -1937,6 +2173,7 @@ function abrirCadastroDivida(divida) {
   const clientes = DB.clientes.list();
   const opts = clientes.map(c => `<option value="${c.id}" ${d.clienteId===c.id?'selected':''}>${c.nome} ${c.cpf?'- '+c.cpf:''}</option>`).join('');
   const title = d.id ? 'Editar Dívida' : 'Nova Dívida';
+  const autoPago = d.status === 'pago' ? (d.valor||0) : (d.pago||0);
   const body = `
     <div class="form-group">
       <label>Cliente *</label>
@@ -1945,17 +2182,20 @@ function abrirCadastroDivida(divida) {
     </div>
     <div class="form-row">
       <div class="form-group"><label>Valor (R$) *</label><input id="dValor" type="number" step="0.01" value="${d.valor||''}" placeholder="0,00"></div>
-      <div class="form-group"><label>Valor Pago (R$)</label><input id="dPago" type="number" step="0.01" value="${d.pago||'0'}" placeholder="0,00"></div>
+      <div class="form-group"><label>Valor Pago (R$)</label><input id="dPago" type="number" step="0.01" value="${autoPago}" placeholder="0,00"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Data de Vencimento</label><input id="dVenc" type="date" value="${d.vencimento||''}"></div>
+      <div class="form-group"><label>Data de Pagamento</label><input id="dDataPag" type="date" value="${d.dataPag||''}"></div>
+    </div>
+    <div class="form-row">
       <div class="form-group"><label>Status</label><select id="dStatus">
         <option value="inadimplente" ${d.status==='inadimplente'?'selected':''}>Inadimplente</option>
         <option value="negociando" ${d.status==='negociando'?'selected':''}>Negociando</option>
         <option value="pago" ${d.status==='pago'?'selected':''}>Pago</option>
       </select></div>
+      <div class="form-group"><label>Produtos</label><input id="dProdutos" value="${d.produtos||''}" placeholder="Ex: Arroz, Feijão, Carne"></div>
     </div>
-    <div class="form-group"><label>Produtos</label><input id="dProdutos" value="${d.produtos||''}" placeholder="Ex: Arroz, Feijão, Carne"></div>
     <div class="form-group"><label>Observações</label><textarea id="dObs">${d.obs||''}</textarea></div>
   `;
   const footer = `
@@ -1967,27 +2207,33 @@ function abrirCadastroDivida(divida) {
 
 function salvarDivida(id) {
   const clienteId = document.getElementById('dCliente').value;
-  const valor = parseFloat(document.getElementById('dValor').value) || 0;
-  const pago = parseFloat(document.getElementById('dPago').value) || 0;
+  let valor = parseFloat(document.getElementById('dValor').value) || 0;
+  let pago = parseFloat(document.getElementById('dPago').value) || 0;
   const venc = document.getElementById('dVenc').value;
-  const status = document.getElementById('dStatus').value;
+  const dataPag = document.getElementById('dDataPag').value;
+  const statusSel = document.getElementById('dStatus').value;
   const produtos = document.getElementById('dProdutos').value.trim();
   const obs = document.getElementById('dObs').value.trim();
   if (!clienteId) { toast('Selecione um cliente!', 'error'); return; }
   if (valor <= 0) { toast('Informe o valor da dívida!', 'error'); return; }
-  const divida = { clienteId, valor, pago, vencimento: venc, status, produtos, obs };
-  // If not editing, store in a separate store, otherwise update
-  const list = DB._get('dividas') || [];
+
+  // Auto‑ajustes de status/pago
+  let status = statusSel;
+  if (status === 'pago' && pago < valor) pago = valor;
+  if (pago >= valor) { status = 'pago'; pago = valor; }
+  if (status !== 'pago' && pago > 0 && pago < valor) status = 'negociando';
+
+  const divida = { clienteId, valor, pago, vencimento: venc, dataPag, status, produtos, obs };
   if (id) {
-    const idx = list.findIndex(x => x.id === id);
-    if (idx >= 0) { divida.id = id; divida.criadoEm = list[idx].criadoEm; list[idx] = divida; }
-    else { divida.id = DB._genId(); divida.criadoEm = new Date().toISOString(); list.push(divida); }
+    const existente = DB.dividas.get(id);
+    if (existente) { divida.id = id; divida.criadoEm = existente.criadoEm; }
+    else { divida.id = DB._genId(); divida.criadoEm = new Date().toISOString(); }
   } else {
     divida.id = DB._genId();
     divida.criadoEm = new Date().toISOString();
-    list.push(divida);
   }
-  DB._set('dividas', list);
+  DB.dividas.save(divida);
+  DB.clientes.recalc(clienteId);
   closeModal();
   toast(id ? 'Dívida atualizada!' : 'Dívida registrada!');
   renderAll();
@@ -1995,9 +2241,22 @@ function salvarDivida(id) {
 
 function excluirDivida(id) {
   if (!confirm('Excluir esta dívida?')) return;
-  const list = (DB._get('dividas') || []).filter(x => x.id !== id);
-  DB._set('dividas', list);
+  const d = DB.dividas.get(id);
+  DB.dividas.delete(id);
+  if (d) DB.clientes.recalc(d.clienteId);
   toast('Dívida excluída.', 'warning');
+  renderAll();
+}
+
+function marcarPago(id) {
+  const d = DB.dividas.get(id);
+  if (!d) return;
+  d.status = 'pago';
+  d.pago = d.valor;
+  d.dataPag = DB.hojeLocal();
+  DB.dividas.save(d);
+  DB.clientes.recalc(d.clienteId);
+  toast('Dívida marcada como paga!', 'success');
   renderAll();
 }
 
@@ -2078,7 +2337,7 @@ function renderAll() {
 function renderBadges() {
   const stats = DB.getStats();
   document.getElementById('badgeClientes').textContent = stats.totalClientes;
-  const dividas = DB._get('dividas') || [];
+  const dividas = DB.dividas.list();
   const total = dividas.reduce((a,d) => a + (d.valor||0), 0);
   document.getElementById('badgeDividas').textContent = 'R$' + Math.round(total/1000) + 'K';
   document.getElementById('notifDot').style.display = stats.inadimplentes > 0 ? 'block' : 'none';
@@ -2088,25 +2347,25 @@ function renderBadges() {
 
 function renderDashboard() {
   const stats = DB.getStats();
-  const clientes = DB.clientes.list();
-  const dividas = DB._get('dividas') || [];
-  const produtos = DB.produtos.list();
-  const totalDividas = stats.totalDividas + dividas.reduce((a,d) => a + (d.valor||0), 0);
-  const totalRecolhido = clientes.filter(c => c.status === 'ativo').reduce((a,c) => a + (c.saldo||0)*0.3, 0) +
-    dividas.filter(d => d.status === 'pago').reduce((a,d) => a + (d.pago||0), 0);
+  const dividas = DB.dividas.list();
+  const abertas = dividas.filter(d => d.status !== 'pago');
+  const pagas = dividas.filter(d => d.status === 'pago');
+  const totalDividas = dividas.reduce((a,d) => a + (d.valor||0), 0);
+  const totalRecolhido = pagas.reduce((a,d) => a + (d.pago||0), 0);
+  const saldoAberto = abertas.reduce((a,d) => a + (d.valor||0) - (d.pago||0), 0);
 
   document.getElementById('dashCards').innerHTML = `
     <div class="card"><div class="card-header"><span class="card-label">Dívidas Totais</span><div class="card-icon red"><i class="fas fa-dollar-sign"></i></div></div>
       <div class="card-value">R$ ${totalDividas.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div>
-      <div class="card-change up"><i class="fas fa-arrow-up"></i> Base cadastro</div></div>
+      <div class="card-change up"><i class="fas fa-arrow-up"></i> ${dividas.length} registros</div></div>
     <div class="card"><div class="card-header"><span class="card-label">Clientes</span><div class="card-icon blue"><i class="fas fa-users"></i></div></div>
       <div class="card-value">${stats.totalClientes}</div>
       <div class="card-change ${stats.ativos > stats.inadimplentes ? 'up' : 'down'}">
         <i class="fas fa-${stats.ativos > stats.inadimplentes ? 'arrow-up' : 'arrow-down'}"></i>
         ${stats.ativos} ativos · ${stats.inadimplentes} inadimplentes</div></div>
     <div class="card"><div class="card-header"><span class="card-label">Saldo Devedor Médio</span><div class="card-icon gold"><i class="fas fa-balance-scale"></i></div></div>
-      <div class="card-value">R$ ${stats.totalClientes ? (totalDividas/stats.totalClientes).toFixed(2) : '0,00'}</div>
-      <div class="card-change ${stats.totalClientes > 0 ? 'down' : 'up'}"><i class="fas fa-${stats.totalClientes > 0 ? 'arrow-down' : 'arrow-up'}"></i> por cliente</div></div>
+      <div class="card-value">R$ ${stats.totalClientes ? (saldoAberto/stats.totalClientes).toFixed(2) : '0,00'}</div>
+      <div class="card-change ${saldoAberto > 0 ? 'down' : 'up'}"><i class="fas fa-${saldoAberto > 0 ? 'arrow-down' : 'arrow-up'}"></i> por cliente</div></div>
     <div class="card"><div class="card-header"><span class="card-label">Dívida × Rendimento</span><div class="card-icon green"><i class="fas fa-chart-pie"></i></div></div>
       <div class="card-value">${totalDividas > 0 ? Math.round((totalRecolhido/totalDividas)*100) : 0}<small>%</small></div>
       <div class="card-change ${totalRecolhido > 0 ? 'up' : 'down'}"><i class="fas fa-${totalRecolhido > 0 ? 'arrow-up' : 'arrow-down'}"></i> taxa de recuperação</div></div>
@@ -2114,17 +2373,23 @@ function renderDashboard() {
 
   document.getElementById('dashMetrics').innerHTML = `
     <div class="metric-card"><div class="metric-value text-green">R$ ${totalRecolhido.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div>
-      <div class="metric-label">Valores Recolhidos</div><div class="metric-sub"><span class="text-green">Total recuperado</span></div></div>
-    <div class="metric-card"><div class="metric-value text-danger">R$ ${totalDividas.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div>
-      <div class="metric-label">Total Devedor</div><div class="metric-sub"><span class="text-danger">Em aberto</span></div></div>
+      <div class="metric-label">Valores Recolhidos</div><div class="metric-sub"><span class="text-green">Total já pago</span></div></div>
+    <div class="metric-card"><div class="metric-value text-danger">R$ ${saldoAberto.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div>
+      <div class="metric-label">Saldo Devedor</div><div class="metric-sub"><span class="text-danger">Em aberto</span></div></div>
     <div class="metric-card"><div class="metric-value text-warning">${stats.totalClientes ? Math.round((stats.inadimplentes/stats.totalClientes)*100) : 0}<small>%</small></div>
       <div class="metric-label">Inadimplência</div><div class="metric-sub">${stats.inadimplentes} de ${stats.totalClientes} clientes</div></div>
   `;
 
-  // Charts
-  const semanas = ['Sem 22','Sem 23','Sem 24','Sem 25','Sem 26'];
-  const semDividas = [totalDividas*0.85, totalDividas*0.9, totalDividas*0.95, totalDividas*0.98, totalDividas];
-  const semRec = [totalRecolhido*0.7, totalRecolhido*0.8, totalRecolhido*0.85, totalRecolhido*0.95, totalRecolhido];
+  // Charts com dados reais agrupados por mês
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const porMes = meses.map((_,i) => {
+    const m = String(i+1).padStart(2,'0');
+    const y = new Date().getFullYear();
+    const d = dividas.filter(d => d.criadoEm && d.criadoEm.startsWith(`${y}-${m}`));
+    const rec = d.filter(x => x.status === 'pago').reduce((a,x) => a + (x.pago||0), 0);
+    const dev = d.filter(x => x.status !== 'pago').reduce((a,x) => a + (x.valor||0) - (x.pago||0), 0);
+    return { rec, dev };
+  });
 
   if (state.charts.semana) state.charts.semana.destroy();
   if (state.charts.mes) state.charts.mes.destroy();
@@ -2133,38 +2398,34 @@ function renderDashboard() {
   state.charts.semana = new Chart(document.getElementById('chartSemana'), {
     type:'bar',
     data: {
-      labels: semanas,
+      labels: meses.slice(0,6),
       datasets: [
-        { label:'Dívidas', data:semDividas, backgroundColor:'rgba(220,38,38,.2)', borderColor:'#dc2626', borderWidth:2, borderRadius:4 },
-        { label:'Recolhido', data:semRec, backgroundColor:'rgba(13,122,62,.2)', borderColor:'#0d7a3e', borderWidth:2, borderRadius:4 }
+        { label:'Dívidas', data:porMes.slice(0,6).map(m=>m.dev+m.rec), backgroundColor:'rgba(220,38,38,.2)', borderColor:'#dc2626', borderWidth:2, borderRadius:4 },
+        { label:'Recolhido', data:porMes.slice(0,6).map(m=>m.rec), backgroundColor:'rgba(13,122,62,.2)', borderColor:'#0d7a3e', borderWidth:2, borderRadius:4 }
       ]
     },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
   });
 
-  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun'];
-  const baseD = totalDividas / 6;
-  const baseR = totalRecolhido / 6;
   state.charts.mes = new Chart(document.getElementById('chartMes'), {
     type:'line',
     data: {
-      labels: meses,
+      labels: meses.slice(0,6),
       datasets: [
-        { label:'Dívidas', data:meses.map((_,i)=>baseD*(0.7+i*0.1)), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#dc2626' },
-        { label:'Recolhido', data:meses.map((_,i)=>baseR*(0.5+i*0.12)), borderColor:'#0d7a3e', backgroundColor:'rgba(13,122,62,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#0d7a3e' }
+        { label:'Dívidas', data:porMes.slice(0,6).map(m=>m.dev+m.rec), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#dc2626' },
+        { label:'Recolhido', data:porMes.slice(0,6).map(m=>m.rec), borderColor:'#0d7a3e', backgroundColor:'rgba(13,122,62,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#0d7a3e' }
       ]
     },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
   });
 
-  const meses12 = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   state.charts.ano = new Chart(document.getElementById('chartAno'), {
     type:'bar',
     data: {
-      labels: meses12,
+      labels: meses,
       datasets: [
-        { label:'Recolhido', data:meses12.map((_,i)=>i<6?baseR*(0.4+i*0.12):baseR*(0.8+Math.random()*0.3)), backgroundColor:'#0d7a3e', borderRadius:4 },
-        { label:'Devedor', data:meses12.map((_,i)=>i<6?baseD*(0.6+i*0.1):baseD*(0.9+Math.random()*0.3)), backgroundColor:'#dc2626', borderRadius:4 }
+        { label:'Recolhido', data:meses.map((_,i)=>porMes[i]?.rec||0), backgroundColor:'#0d7a3e', borderRadius:4 },
+        { label:'Devedor', data:meses.map((_,i)=>porMes[i]?.dev||0), backgroundColor:'#dc2626', borderRadius:4 }
       ]
     },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
@@ -2206,7 +2467,8 @@ function renderClientes() {
 }
 
 function renderDividas() {
-  const dividas = DB._get('dividas') || [];
+  const dividas = DB.dividas.list();
+  const stats = DB.getStats();
   const total = dividas.reduce((a,d) => a+(d.valor||0), 0);
   const pago = dividas.filter(d=>d.status==='pago').reduce((a,d)=>a+(d.pago||0), 0);
   const negociando = dividas.filter(d=>d.status==='negociando').reduce((a,d)=>a+(d.valor||0), 0);
@@ -2214,7 +2476,7 @@ function renderDividas() {
 
   document.getElementById('dividasCards').innerHTML = `
     <div class="card"><div class="card-header"><span class="card-label">Total em Aberto</span><div class="card-icon red"><i class="fas fa-clock"></i></div></div>
-      <div class="card-value">R$ ${total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div></div>
+      <div class="card-value">R$ ${(total-pago).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div></div>
     <div class="card"><div class="card-header"><span class="card-label">Em Negociação</span><div class="card-icon gold"><i class="fas fa-handshake"></i></div></div>
       <div class="card-value">R$ ${negociando.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div></div>
     <div class="card"><div class="card-header"><span class="card-label">Valores Pagos</span><div class="card-icon green"><i class="fas fa-check-circle"></i></div></div>
@@ -2231,20 +2493,25 @@ function renderDividas() {
   tbody.innerHTML = dividas.map(d => {
     const c = DB.clientes.get(d.clienteId);
     const nome = c ? c.nome : 'Cliente removido';
-    const atraso = d.vencimento ? Math.max(0, Math.floor((new Date() - new Date(d.vencimento)) / (1000*60*60*24))) : 0;
+    const atraso = d.vencimento ? Math.max(0, Math.floor((new Date() - new Date(d.vencimento+'T12:00:00')) / (1000*60*60*24))) : 0;
+    const saldoPend = (d.valor||0) - (d.pago||0);
     const progresso = d.valor ? Math.min(100, Math.round(((d.pago||0)/d.valor)*100)) : 0;
+    const jaPago = d.status === 'pago';
     const statusLabel = { inadimplente:'Inadimplente', negociando:'Negociando', pago:'Pago' };
     const statusClass = { inadimplente:'inadimplente', negociando:'negociando', pago:'pago' };
-    return `<tr>
+    return `<tr class="${jaPago?'row-pago':''}">
       <td class="fw-700">${nome}</td>
       <td class="fw-700 text-danger">R$ ${(d.valor||0).toFixed(2)}</td>
       <td>${d.vencimento||'---'}</td>
       <td style="color:${atraso>90?'var(--danger)':atraso>30?'var(--warning)':'var(--text-secondary)'}">${atraso>0?atraso+' dias':'---'}</td>
       <td>${d.produtos||'---'}</td>
-      <td><div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${progresso}%;background:${progresso>50?'var(--success)':progresso>20?'var(--warning)':'var(--danger)'}"></div></div><small style="font-size:.65rem;color:var(--text-secondary);">${progresso}% pago</small></td>
+      <td><div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width:${progresso}%;background:${jaPago?'var(--success)':progresso>50?'var(--success)':progresso>20?'var(--warning)':'var(--danger)'}"></div>
+      </div><small style="font-size:.65rem;color:${jaPago?'var(--success)':'var(--text-secondary)'}">${jaPago?'Pago':(saldoPend>0?'R$ '+saldoPend.toFixed(2)+' pendente':'')}</small></td>
       <td><span class="status-badge ${statusClass[d.status]}">${statusLabel[d.status]||d.status}</span></td>
       <td>
-        <button class="action-btn" onclick="abrirCadastroDivida((DB._get('dividas')||[]).find(x=>x.id==='${d.id}'))" title="Editar"><i class="fas fa-edit"></i></button>
+        ${jaPago?'':`<button class="action-btn success" onclick="marcarPago('${d.id}')" title="Marcar como Pago"><i class="fas fa-check"></i></button>`}
+        <button class="action-btn" onclick="abrirCadastroDivida((DB.dividas.list()).find(x=>x.id==='${d.id}'))" title="Editar"><i class="fas fa-edit"></i></button>
         <button class="action-btn danger" onclick="excluirDivida('${d.id}')" title="Excluir"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`;
@@ -2289,9 +2556,11 @@ function renderProdutos() {
 
 function renderRelatorio() {
   const clientes = DB.clientes.list();
-  const dividas = DB._get('dividas') || [];
-  const totalRec = clientes.filter(c=>c.status==='ativo').reduce((a,c)=>a+(c.saldo||0)*0.3,0) + dividas.filter(d=>d.status==='pago').reduce((a,d)=>a+(d.pago||0),0);
-  const totalDev = clientes.reduce((a,c)=>a+(c.saldo||0),0) + dividas.filter(d=>d.status!=='pago').reduce((a,d)=>a+(d.valor||0),0);
+  const dividas = DB.dividas.list();
+  const pagas = dividas.filter(d => d.status === 'pago');
+  const abertas = dividas.filter(d => d.status !== 'pago');
+  const totalRec = pagas.reduce((a,d) => a + (d.pago||0), 0);
+  const totalDev = abertas.reduce((a,d) => a + (d.valor||0) - (d.pago||0), 0);
 
   document.getElementById('relMetrics').innerHTML = `
     <div class="metric-card"><div class="metric-value text-green">R$ ${totalRec.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div><div class="metric-label">Total Recolhido</div></div>
@@ -2299,51 +2568,58 @@ function renderRelatorio() {
     <div class="metric-card"><div class="metric-value" style="color:var(--gold);">R$ ${(totalRec+totalDev).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</div><div class="metric-label">Movimentação Total</div></div>
   `;
 
+  // Dados reais por mês
   const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const tbody = document.getElementById('relTbody');
   tbody.innerHTML = meses.map((m,i) => {
-    const r = totalRec * (0.3 + i * 0.06);
-    const d = totalDev * (0.3 + i * 0.06);
-    const inad = d > 0 ? Math.round((d/(r+d))*100) : 0;
-    const cli = Math.round(clientes.length * (0.2 + i * 0.07));
+    const mesStr = String(i+1).padStart(2,'0');
+    const ano = new Date().getFullYear();
+    const dMes = dividas.filter(d => d.criadoEm && d.criadoEm.startsWith(`${ano}-${mesStr}`));
+    const r = dMes.filter(x => x.status === 'pago').reduce((a,x) => a + (x.pago||0), 0);
+    const dev = dMes.filter(x => x.status !== 'pago').reduce((a,x) => a + (x.valor||0) - (x.pago||0), 0);
+    const inad = (r+dev) > 0 ? Math.round((dev/(r+dev))*100) : 0;
+    const cliUnico = new Set(dMes.map(x => x.clienteId)).size;
     return `<tr><td class="fw-700">${m}</td>
       <td class="text-green fw-700">R$ ${r.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</td>
-      <td class="text-danger fw-700">R$ ${d.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</td>
+      <td class="text-danger fw-700">R$ ${dev.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}</td>
       <td>${inad}%</td>
-      <td>${Math.min(cli, clientes.length)}</td></tr>`;
+      <td>${cliUnico}</td></tr>`;
   }).join('');
 
-  // Charts
-  const semLabels = ['Sem 22','Sem 23','Sem 24','Sem 25','Sem 26'];
-  const semD = Array(5).fill(0).map((_,i)=>totalDev*(0.8+i*0.05));
-  const semR = Array(5).fill(0).map((_,i)=>totalRec*(0.7+i*0.08));
+  // Charts reais
+  const mesesAbr = meses.map(m => m.substr(0,3));
+  const porMes = mesesAbr.map((_,i) => {
+    const ms = String(i+1).padStart(2,'0');
+    const y = new Date().getFullYear();
+    const d = dividas.filter(d => d.criadoEm && d.criadoEm.startsWith(`${y}-${ms}`));
+    return {
+      rec: d.filter(x => x.status === 'pago').reduce((a,x) => a + (x.pago||0), 0),
+      dev: d.filter(x => x.status !== 'pago').reduce((a,x) => a + (x.valor||0) - (x.pago||0), 0)
+    };
+  });
 
   if (state.charts.relSemana) state.charts.relSemana.destroy();
   if (state.charts.relMes) state.charts.relMes.destroy();
   if (state.charts.relAno) state.charts.relAno.destroy();
 
   state.charts.relSemana = new Chart(document.getElementById('chartRelSemana'), {
-    type:'line', data:{ labels:semLabels, datasets:[
-      { label:'Dívidas', data:semD, borderColor:'#dc2626', tension:.4, pointRadius:4 },
-      { label:'Recolhido', data:semR, borderColor:'#0d7a3e', tension:.4, pointRadius:4 }
+    type:'line', data:{ labels:mesesAbr.slice(0,6), datasets:[
+      { label:'Dívidas', data:porMes.slice(0,6).map(m=>m.dev+m.rec), borderColor:'#dc2626', tension:.4, pointRadius:4 },
+      { label:'Recolhido', data:porMes.slice(0,6).map(m=>m.rec), borderColor:'#0d7a3e', tension:.4, pointRadius:4 }
     ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
   });
 
-  const mesLabels6 = ['Jan','Fev','Mar','Abr','Mai','Jun'];
-  const mesD6 = mesLabels6.map((_,i)=>totalDev*(0.5+i*0.1));
-  const mesR6 = mesLabels6.map((_,i)=>totalRec*(0.3+i*0.12));
   state.charts.relMes = new Chart(document.getElementById('chartRelMes'), {
-    type:'bar', data:{ labels:mesLabels6, datasets:[
-      { label:'Dívidas', data:mesD6, backgroundColor:'rgba(220,38,38,.2)', borderColor:'#dc2626', borderWidth:1, borderRadius:4 },
-      { label:'Recolhido', data:mesR6, backgroundColor:'rgba(13,122,62,.2)', borderColor:'#0d7a3e', borderWidth:1, borderRadius:4 }
+    type:'bar', data:{ labels:mesesAbr.slice(0,6), datasets:[
+      { label:'Dívidas', data:porMes.slice(0,6).map(m=>m.dev+m.rec), backgroundColor:'rgba(220,38,38,.2)', borderColor:'#dc2626', borderWidth:1, borderRadius:4 },
+      { label:'Recolhido', data:porMes.slice(0,6).map(m=>m.rec), backgroundColor:'rgba(13,122,62,.2)', borderColor:'#0d7a3e', borderWidth:1, borderRadius:4 }
     ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
   });
 
-  const mes12 = meses.map(m=>m.substr(0,3));
   state.charts.relAno = new Chart(document.getElementById('chartRelAno'), {
-    type:'line', data:{ labels:mes12, datasets:[
-      { label:'Recolhido', data:mes12.map((_,i)=>totalRec*(0.2+i*0.07)), borderColor:'#0d7a3e', backgroundColor:'rgba(13,122,62,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#0d7a3e' },
-      { label:'Devedor', data:mes12.map((_,i)=>totalDev*(0.3+i*0.06)), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#dc2626' }
+    type:'line', data:{ labels:mesesAbr, datasets:[
+      { label:'Recolhido', data:mesesAbr.map((_,i)=>porMes[i]?.rec||0), borderColor:'#0d7a3e', backgroundColor:'rgba(13,122,62,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#0d7a3e' },
+      { label:'Devedor', data:mesesAbr.map((_,i)=>porMes[i]?.dev||0), borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,.1)', fill:true, tension:.4, pointRadius:4, pointBackgroundColor:'#dc2626' }
     ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ boxWidth:12, padding:12, font:{family:'Inter'} } } }, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>'R$ '+v.toLocaleString() } } } }
   });
 }
@@ -2648,7 +2924,7 @@ function gerarPDFCliente(id) {
   });
 
   // Debt table
-  const dividas = (DB._get('dividas') || []).filter(d => d.clienteId === c.id);
+  const dividas = DB.dividas.list().filter(d => d.clienteId === c.id);
   if (dividas.length > 0) {
     let ty = y + data.length*7 + 12;
     doc.setFontSize(11);
@@ -2702,10 +2978,8 @@ function gerarPDFDividas() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'mm', format:'a4' });
   const pageW = 210;
-  const dividas = DB._get('dividas') || [];
+  const dividas = DB.dividas.list();
   const clientes = DB.clientes.list();
-
-  doc.setFillColor(13,122,62);
   doc.rect(0,0,pageW,40,'F');
   doc.setTextColor(255,255,255);
   doc.setFontSize(18);
@@ -2754,9 +3028,11 @@ function gerarPDFAnual() {
   const doc = new jsPDF({ unit:'mm', format:'a4' });
   const pageW = 210;
   const clientes = DB.clientes.list();
-  const dividas = DB._get('dividas') || [];
-  const totalRec = clientes.filter(c=>c.status==='ativo').reduce((a,c)=>a+(c.saldo||0)*0.3,0) + dividas.filter(d=>d.status==='pago').reduce((a,d)=>a+(d.pago||0),0);
-  const totalDev = clientes.reduce((a,c)=>a+(c.saldo||0),0) + dividas.filter(d=>d.status!=='pago').reduce((a,d)=>a+(d.valor||0),0);
+  const dividas = DB.dividas.list();
+  const pagas = dividas.filter(d => d.status === 'pago');
+  const abertas = dividas.filter(d => d.status !== 'pago');
+  const totalRec = pagas.reduce((a,d) => a + (d.pago||0), 0);
+  const totalDev = abertas.reduce((a,d) => a + (d.valor||0) - (d.pago||0), 0);
 
   doc.setFillColor(13,122,62);
   doc.rect(0,0,pageW,40,'F');
@@ -2785,11 +3061,14 @@ function gerarPDFAnual() {
     startY: 76,
     head: [['Mês','Recolhido','Devedor','% Inadimplência','Clientes']],
     body: meses.map((m,i) => {
-      const r = totalRec * (0.3 + i * 0.06);
-      const d = totalDev * (0.3 + i * 0.06);
-      const inad = d > 0 ? Math.round((d/(r+d))*100) : 0;
-      const cli = Math.round(clientes.length * (0.2 + i * 0.07));
-      return [m, 'R$'+r.toFixed(2), 'R$'+d.toFixed(2), inad+'%', Math.min(cli,clientes.length)];
+      const mesStr = String(i+1).padStart(2,'0');
+      const ano = new Date().getFullYear();
+      const dMes = dividas.filter(d => d.criadoEm && d.criadoEm.startsWith(`${ano}-${mesStr}`));
+      const r = dMes.filter(x => x.status === 'pago').reduce((a,x) => a + (x.pago||0), 0);
+      const dev = dMes.filter(x => x.status !== 'pago').reduce((a,x) => a + (x.valor||0) - (x.pago||0), 0);
+      const inad = (r+dev) > 0 ? Math.round((dev/(r+dev))*100) : 0;
+      const cliUnico = new Set(dMes.map(x => x.clienteId)).size;
+      return [m, 'R$'+r.toFixed(2), 'R$'+dev.toFixed(2), inad+'%', cliUnico];
     }),
     theme:'grid',
     headStyles:{ fillColor:[13,122,62], fontSize:8 },
@@ -2816,7 +3095,7 @@ function gerarPDFGeral() {
   const doc = new jsPDF({ unit:'mm', format:'a4' });
   const pageW = 210;
   const clientes = DB.clientes.list();
-  const dividas = DB._get('dividas') || [];
+  const dividas = DB.dividas.list();
   const produtos = DB.produtos.list();
 
   doc.setFillColor(13,122,62);
@@ -2833,7 +3112,7 @@ function gerarPDFGeral() {
   doc.setFontSize(10);
   doc.setTextColor(51,51,51);
   doc.text(`Clientes: ${clientes.length} | Dívidas: ${dividas.length} | Produtos: ${produtos.length}`, 20, 52);
-  const totalD = clientes.reduce((a,c)=>a+(c.saldo||0),0) + dividas.filter(d=>d.status!=='pago').reduce((a,d)=>a+(d.valor||0),0);
+  const totalD = dividas.filter(d=>d.status!=='pago').reduce((a,d)=>a+(d.valor||0)-(d.pago||0),0);
   doc.text(`Total devedor: R$ ${totalD.toFixed(2)}`, 20, 60);
 
   if (clientes.length) {
@@ -2982,8 +3261,26 @@ document.getElementById('globalSearch').addEventListener('keyup', function(e) {
   if (e.key === 'Enter') globalSearch(this.value);
 });
 
-toast('Bem-vindo ao CRM Super Mercado Felix!', 'success');
-setTimeout(checkLembretesPopup, 800);
+// Login Enter key handlers
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const screen = document.getElementById('loginScreen');
+    if (!screen.classList.contains('hidden')) {
+      const form = document.getElementById('loginForm');
+      if (form.style.display !== 'none') doLogin();
+      else setupPassword();
+    }
+  }
+});
+
+// Guarda toast e lembrete popup para após o login
+function posLogin() {
+  toast('Bem-vindo ao CRM Super Mercado Felix!', 'success');
+  setTimeout(checkLembretesPopup, 800);
+}
+
+// Init
+if (checkLogin()) posLogin();
 </script>
 </body>
 </html>
